@@ -367,6 +367,7 @@ class LazyBlocks_Blocks {
 					$this->get_admin_url(
 						array(
 							'lazyblocks_export_block' => intval( $post->ID ),
+							'lazyblocks_export_nonce' => wp_create_nonce( 'lzb-export-blocks-nonce' ),
 						)
 					),
 					sprintf(
@@ -1402,6 +1403,7 @@ class LazyBlocks_Blocks {
 	 *
 	 * @param string $code - user code string.
 	 * @param array  $attributes - block attributes.
+	 * @param array  $context - block context.
 	 *
 	 * @return string
 	 */
@@ -1732,11 +1734,11 @@ class LazyBlocks_Blocks {
 		}
 
 		// add filter for block output.
-		$result = apply_filters( 'lzb/block_render/output', $result, $attributes, $render_location, $block, $context );
+		$result = apply_filters( 'lzb/block_render/output', $result, $attributes, $render_location, $block, $context, $content );
 		// phpcs:ignore
-		$result = apply_filters( $block['slug'] . '/' . $render_location . '_output', $result, $attributes, $block, $context );
+		$result = apply_filters( $block['slug'] . '/' . $render_location . '_output', $result, $attributes, $block, $context, $content );
 		// phpcs:ignore
-		$result = apply_filters( $block['slug'] . '/output', $result, $attributes, $render_location, $block, $context );
+		$result = apply_filters( $block['slug'] . '/output', $result, $attributes, $render_location, $block, $context, $content );
 
 		return $result;
 	}
