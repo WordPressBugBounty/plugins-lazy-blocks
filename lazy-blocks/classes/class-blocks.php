@@ -79,9 +79,6 @@ class LazyBlocks_Blocks {
 		// https://github.com/nk-crew/lazy-blocks/issues/247 .
 		add_filter( 'allowed_block_types_all', array( $this, 'allowed_block_types_all' ), 100, 2 );
 
-		// Custom post roles.
-		add_action( 'admin_init', array( $this, 'add_role_caps' ) );
-
 		// Additional elements in blocks list table.
 		add_filter( 'display_post_states', array( $this, 'display_post_states' ), 10, 2 );
 		add_filter( 'disable_months_dropdown', array( $this, 'disable_months_dropdown' ), 10, 2 );
@@ -296,30 +293,65 @@ class LazyBlocks_Blocks {
 	}
 
 	/**
+	 * Get the Lazy Blocks role capability matrix.
+	 *
+	 * @return array
+	 */
+	public function get_role_caps_matrix() {
+		return array(
+			'administrator' => array(
+				'edit_lazyblock',
+				'edit_lazyblocks',
+				'edit_other_lazyblocks',
+				'publish_lazyblocks',
+				'read_lazyblock',
+				'read_private_lazyblocks',
+				'delete_lazyblocks',
+				'delete_lazyblock',
+			),
+			'editor'        => array(
+				'read_lazyblock',
+				'read_private_lazyblocks',
+			),
+			'author'        => array(
+				'read_lazyblock',
+				'read_private_lazyblocks',
+			),
+			'contributor'   => array(
+				'read_lazyblock',
+				'read_private_lazyblocks',
+			),
+		);
+	}
+
+	/**
+	 * Synchronize Lazy Blocks capabilities for built-in roles.
+	 *
+	 * @return void
+	 */
+	public function sync_role_caps() {
+		foreach ( $this->get_role_caps_matrix() as $role_name => $caps ) {
+			$role = get_role( $role_name );
+
+			if ( ! $role ) {
+				continue;
+			}
+
+			foreach ( $caps as $capability ) {
+				$role->add_cap( $capability );
+			}
+		}
+	}
+
+	/**
 	 * Add Roles
+	 *
+	 * @deprecated Use sync_role_caps().
+	 *
+	 * @return void
 	 */
 	public function add_role_caps() {
-		global $wp_roles;
-
-		if ( isset( $wp_roles ) ) {
-			$wp_roles->add_cap( 'administrator', 'edit_lazyblock' );
-			$wp_roles->add_cap( 'administrator', 'edit_lazyblocks' );
-			$wp_roles->add_cap( 'administrator', 'edit_other_lazyblocks' );
-			$wp_roles->add_cap( 'administrator', 'publish_lazyblocks' );
-			$wp_roles->add_cap( 'administrator', 'read_lazyblock' );
-			$wp_roles->add_cap( 'administrator', 'read_private_lazyblocks' );
-			$wp_roles->add_cap( 'administrator', 'delete_lazyblocks' );
-			$wp_roles->add_cap( 'administrator', 'delete_lazyblock' );
-
-			$wp_roles->add_cap( 'editor', 'read_lazyblock' );
-			$wp_roles->add_cap( 'editor', 'read_private_lazyblocks' );
-
-			$wp_roles->add_cap( 'author', 'read_lazyblock' );
-			$wp_roles->add_cap( 'author', 'read_private_lazyblocks' );
-
-			$wp_roles->add_cap( 'contributor', 'read_lazyblock' );
-			$wp_roles->add_cap( 'contributor', 'read_private_lazyblocks' );
-		}
+		$this->sync_role_caps();
 	}
 
 	/**
@@ -915,6 +947,13 @@ class LazyBlocks_Blocks {
 	private $user_blocks = null;
 
 	/**
+	 * Prepared blocks list cache for the current request.
+	 *
+	 * @var array
+	 */
+	private $blocks_result_cache = array();
+
+	/**
 	 * Add block.
 	 *
 	 * @param array $data - block data.
@@ -925,6 +964,7 @@ class LazyBlocks_Blocks {
 		}
 
 		$this->user_blocks[] = apply_filters( 'lzb/add_user_block', $data );
+		$this->clear_blocks_result_cache();
 	}
 
 	/**
@@ -937,6 +977,7 @@ class LazyBlocks_Blocks {
 			foreach ( $this->user_blocks as $k => $val ) {
 				if ( isset( $val['slug'] ) && $val['slug'] === $block_slug ) {
 					unset( $this->user_blocks[ $k ] );
+					$this->clear_blocks_result_cache();
 				}
 			}
 		}
@@ -1145,6 +1186,16 @@ class LazyBlocks_Blocks {
 	 * @return array|null
 	 */
 	public function get_blocks( $db_only = false, $no_cache = false, $keep_duplicates = false ) {
+		if ( $no_cache ) {
+			$this->clear_blocks_result_cache();
+		}
+
+		$result_cache_key = $this->get_blocks_result_cache_key( $db_only, $keep_duplicates );
+
+		if ( ! $no_cache && isset( $this->blocks_result_cache[ $result_cache_key ] ) ) {
+			return apply_filters( 'lzb/get_blocks', $this->blocks_result_cache[ $result_cache_key ] );
+		}
+
 		// fetch blocks.
 		if ( null === $this->blocks || $no_cache ) {
 			// Try to get blocks from transient cache first.
@@ -1215,10 +1266,33 @@ class LazyBlocks_Blocks {
 				}
 			}
 
-			return apply_filters( 'lzb/get_blocks', $unique_result );
+			$result = $unique_result;
+		}
+
+		if ( ! $no_cache ) {
+			$this->blocks_result_cache[ $result_cache_key ] = $result;
 		}
 
 		return apply_filters( 'lzb/get_blocks', $result );
+	}
+
+	/**
+	 * Get the request cache key for prepared get_blocks() results.
+	 *
+	 * @param bool $db_only - get blocks from database only.
+	 * @param bool $keep_duplicates - get blocks with same slugs.
+	 *
+	 * @return string
+	 */
+	private function get_blocks_result_cache_key( $db_only, $keep_duplicates ) {
+		return ( $db_only ? 'db' : 'all' ) . ':' . ( $keep_duplicates ? 'duplicates' : 'unique' );
+	}
+
+	/**
+	 * Clear prepared blocks list cache for the current request.
+	 */
+	private function clear_blocks_result_cache() {
+		$this->blocks_result_cache = array();
 	}
 
 	/**
@@ -1339,6 +1413,7 @@ class LazyBlocks_Blocks {
 
 		// Also reset in-memory cache.
 		$this->blocks = null;
+		$this->clear_blocks_result_cache();
 
 		// Reset cache hash.
 		self::$cache_hash = null;
