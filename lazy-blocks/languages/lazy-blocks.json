@@ -104,10 +104,7 @@
          "Deprecated": [
             ""
          ],
-         "Lazy Blocks and Lazy Blocks Pro should not be active at the same time. We've automatically deactivated Lazy Blocks.": [
-            ""
-         ],
-         "Lazy Blocks and Lazy Blocks Pro should not be active at the same time. We've automatically deactivated Lazy Blocks Pro.": [
+         "This version of Lazy Blocks is too old to run next to Lazy Blocks Pro. We've automatically deactivated Lazy Blocks.": [
             ""
          ],
          "Hook %1$s is <strong>deprecated</strong> since version %2$s! Use %3$s instead.": [
