@@ -15,20 +15,26 @@ export default function UpdateEditor() {
 		isSavingPost,
 		isAutosavingPost,
 		selectedBlock,
+		selectedBlockClientId,
 		editorSettings,
 		editorMode,
 		blocks,
+		editorBlocks,
 		postId,
+		postType,
 		blockData,
 	} = useSelect((select) => {
 		const {
 			isSavingPost: checkIsSavingPost,
 			isAutosavingPost: checkIsAutosavingPost,
 			getCurrentPostId,
+			getCurrentPostType,
+			getEditorBlocks,
 			getEditorSettings,
 		} = select('core/editor');
 
-		const { getSelectedBlock, getBlocks } = select('core/block-editor');
+		const { getSelectedBlock, getSelectedBlockClientId, getBlocks } =
+			select('core/block-editor');
 
 		// core/editor has getEditorMode since WP 6.5, core/edit-post keeps a deprecated copy.
 		const { getEditorMode } = select('core/editor').getEditorMode
@@ -41,16 +47,19 @@ export default function UpdateEditor() {
 			isSavingPost: checkIsSavingPost(),
 			isAutosavingPost: checkIsAutosavingPost(),
 			selectedBlock: getSelectedBlock(),
+			selectedBlockClientId: getSelectedBlockClientId(),
 			editorSettings: getEditorSettings(),
 			editorMode: getEditorMode(),
 			blocks: getBlocks(),
+			editorBlocks: getEditorBlocks(),
 			postId: getCurrentPostId(),
+			postType: getCurrentPostType(),
 			blockData: getBlockData(),
 		};
 	}, []);
 
-	const { selectBlock, insertBlocks, resetBlocks } =
-		useDispatch('core/block-editor');
+	const { selectBlock } = useDispatch('core/block-editor');
+	const { editEntityRecord } = useDispatch('core');
 	const editorDispatch = useDispatch('core/editor');
 	const editPostDispatch = useDispatch('core/edit-post');
 	const { editPost } = editorDispatch;
@@ -70,29 +79,28 @@ export default function UpdateEditor() {
 	/**
 	 * Add default block to post if doesn't exist.
 	 */
-	const blocksRestoreBusy = useRef(false);
+	const wasMainBlockSelected = useRef(false);
 	useEffect(() => {
-		if (blocksRestoreBusy.current) {
-			return;
-		}
-
 		const isValidList =
-			blocks.length === 1 &&
-			blocks[0] &&
-			blocks[0].name === 'lzb-block-builder/main';
+			editorBlocks.length === 1 &&
+			editorBlocks[0] &&
+			editorBlocks[0].name === 'lzb-block-builder/main';
 
 		if (!isValidList) {
-			blocksRestoreBusy.current = true;
-			resetBlocks([]);
-			insertBlocks(createBlock('lzb-block-builder/main'));
-			blocksRestoreBusy.current = false;
+			wasMainBlockSelected.current = false;
+			editEntityRecord(
+				'postType',
+				postType,
+				postId,
+				{ blocks: [createBlock('lzb-block-builder/main')] },
+				{ undoIgnore: true }
+			);
 		}
-	}, [blocks, blocksRestoreBusy, resetBlocks, insertBlocks]);
+	}, [editorBlocks, postType, postId, editEntityRecord]);
 
 	/**
 	 * Always select block.
 	 */
-	const wasMainBlockSelected = useRef(false);
 	useEffect(() => {
 		// if selected block, do nothing.
 		if (selectedBlock && selectedBlock.name === 'lzb-block-builder/main') {
@@ -103,7 +111,7 @@ export default function UpdateEditor() {
 		// If the main block was previously selected and now nothing is selected,
 		// the user likely clicked on the post title or elsewhere.
 		// Don't auto-select in that case (iframe-safe, no DOM queries needed).
-		if (wasMainBlockSelected.current && !selectedBlock) {
+		if (wasMainBlockSelected.current && !selectedBlockClientId) {
 			return;
 		}
 
@@ -118,7 +126,7 @@ export default function UpdateEditor() {
 			selectBlock(selectBlockId);
 			wasMainBlockSelected.current = true;
 		}
-	}, [selectedBlock, blocks, selectBlock]);
+	}, [selectedBlock, selectedBlockClientId, blocks, selectBlock]);
 
 	/**
 	 * Check if post meta data edited and allow to update the post.
@@ -138,7 +146,7 @@ export default function UpdateEditor() {
 		clearTimeout(editorRefreshTimeout.current);
 		editorRefreshTimeout.current = setTimeout(() => {
 			if (defaultBlockData.current !== JSON.stringify(blockData)) {
-				editPost({ edited: new Date() });
+				editPost({ edited: new Date() }, { undoIgnore: true });
 			}
 		}, 150);
 	}, [isSavingPost, isAutosavingPost, blockData, editPost]);
